@@ -14,15 +14,19 @@ struct send
 {
     long type;
     char text[256];
-};
+} message;
 
 struct itimerval timer, timerinfo;
+pthread_t threadID;
+pthread_attr_t threadAttr;
+int qid;
+
 
 int create_queue(key_t key)
 { 
     int qid;
 
-    if((qid = msgget(key, IPC_CREAT)) == -1)
+    if((qid = msgget(key, 0666 | IPC_CREAT)) == -1)
     {
         cerr << "Can't create queue! Exiting..." << endl;
         return(-1);
@@ -46,30 +50,49 @@ void *thread_activity(void *args)
         getitimer(ITIMER_REAL, &timerinfo);
         t = timerinfo.it_value.tv_sec;
         cout << "Waiting: " << t << " [s] left." << endl;
-        wait(2);
+        wait(1);
     } 
     while (t != 0);
     pthread_exit(0);
 }
 
-/* Параметр: таймаут, ключ очереди */
+/*Функция-обработчик для SIGALRM*/
+void timer_handler(int signal, siginfo_t *siginfo, void *context)
+{
+    pthread_join(threadID,NULL);
+    msgctl(qid, IPC_RMID, NULL);
+    exit(0);
+}
+
+/* Параметр: таймаут */
 int main(int argc, char const *argv[])
 {
     int timeout = atoi(argv[1]);
-    key_t key = atoi(argv[2]);
-    int qid = create_queue(key);
-    char text[256];
+    key_t key = ftok("wait", 5);
+    qid = create_queue(key);
+    cout << qid << endl;
     bool flag = false;
-    send msg;
-    pthread_t threadID;
-    pthread_attr_t threadAttr;
-    msg.type = 1;
     
+    struct sigaction time_signal;
+    struct itimerval zero_timer;
+
+    time_signal.sa_sigaction = &timer_handler;
+    time_signal.sa_flags = SA_SIGINFO;
+    
+    zero_timer.it_value.tv_sec = 0;
+    zero_timer.it_interval.tv_sec = 0;
+    zero_timer.it_value.tv_usec = 0;
+    zero_timer.it_interval.tv_usec = 0;
 
     timer.it_value.tv_sec = timeout;
     timer.it_interval.tv_sec = timeout;
     timer.it_value.tv_usec = 0;
     timer.it_interval.tv_usec = 0;
+
+    if (sigaction(SIGALRM, &time_signal, NULL) == -1)
+    {
+        cerr << "Can't handle with SIGVTALRM!" << endl;
+    }
 
     if (setitimer(ITIMER_REAL, &timer, NULL) == -1)
     {
@@ -93,15 +116,17 @@ int main(int argc, char const *argv[])
             flag = true;
         }
         
-        if(msgrcv(qid, &text, sizeof(msg.text), 0, 0) != -1) 
+        if(msgrcv(qid, &message, sizeof(message), 1, 0) != -1) 
         {
-            struct itimerval zero_timer = { 0 };
+            
             if (setitimer(ITIMER_REAL, &zero_timer, &timer))
             {
                 cerr << "Can't handle with ITIMER_REAL!" << endl;
                 return -1;
             }
-            cout << "Received Message! It is: " << msg.text << endl;
+            cout << "Received Message! It is: " << message.text << endl;
+            timer.it_value.tv_sec = timeout;
+            timer.it_interval.tv_sec = timeout;
             if (setitimer(ITIMER_REAL, &timer, NULL) == -1)
             {
                 cerr << "Can't handle with ITIMER_REAL!" << endl;
@@ -109,6 +134,5 @@ int main(int argc, char const *argv[])
             }
         }
     }
-    pthread_join(threadID,NULL);
     return 0;
 }
