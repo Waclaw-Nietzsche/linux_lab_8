@@ -20,6 +20,7 @@ struct itimerval timer, timerinfo;
 pthread_t threadID;
 pthread_attr_t threadAttr;
 int qid;
+int timeout;
 
 
 int create_queue(key_t key)
@@ -67,11 +68,11 @@ void timer_handler(int signal, siginfo_t *siginfo, void *context)
 /* Параметр: таймаут */
 int main(int argc, char const *argv[])
 {
-    int timeout = atoi(argv[1]);
+    timeout = atoi(argv[1]);
     key_t key = ftok("wait", 5);
     qid = create_queue(key);
     cout << qid << endl;
-    bool flag = false;
+    bool flag, flag1 = false;
     
     struct sigaction time_signal;
     struct itimerval zero_timer;
@@ -115,24 +116,49 @@ int main(int argc, char const *argv[])
             }
             flag = true;
         }
-        
-        if(msgrcv(qid, &message, sizeof(message), 1, 0) != -1) 
+        if (!flag1)
         {
-            
-            if (setitimer(ITIMER_REAL, &zero_timer, &timer))
+            if(msgrcv(qid, &message, sizeof(message), 1, 0) != -1) 
             {
-                cerr << "Can't handle with ITIMER_REAL!" << endl;
-                return -1;
+                if (setitimer(ITIMER_REAL, &zero_timer, &timer))
+                {
+                    cerr << "Can't handle with ITIMER_REAL!" << endl;
+                    return -1;
+                }
+                string temp = string(message.text);
+                cout << "Received Time! New time is: " << temp << endl;
+                timeout = stoi(temp);
+                timer.it_value.tv_sec = timeout;
+                timer.it_interval.tv_sec = timeout;
+                if (setitimer(ITIMER_REAL, &timer, NULL) == -1)
+                {
+                    cerr << "Can't handle with ITIMER_REAL!" << endl;
+                    return -1;
+                }
             }
-            cout << "Received Message! It is: " << message.text << endl;
-            timer.it_value.tv_sec = timeout;
-            timer.it_interval.tv_sec = timeout;
-            if (setitimer(ITIMER_REAL, &timer, NULL) == -1)
+            flag1 = true;
+        }
+        else
+        {
+            if(msgrcv(qid, &message, sizeof(message), 1, 0) != -1) 
             {
-                cerr << "Can't handle with ITIMER_REAL!" << endl;
-                return -1;
+                if (setitimer(ITIMER_REAL, &zero_timer, &timer))
+                {
+                    cerr << "Can't handle with ITIMER_REAL!" << endl;
+                    return -1;
+                }
+                cout << "Received Message! It is: " << message.text << endl;
+                timer.it_value.tv_sec = timeout;
+                timer.it_interval.tv_sec = timeout;
+                if (setitimer(ITIMER_REAL, &timer, NULL) == -1)
+                {
+                    cerr << "Can't handle with ITIMER_REAL!" << endl;
+                    return -1;
+                }
             }
         }
+        
+        
     }
     return 0;
 }

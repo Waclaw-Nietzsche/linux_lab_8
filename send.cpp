@@ -30,6 +30,15 @@ int main(int argc, char const *argv[])
     {
         qid = msgget(key, IPC_CREAT);
         cout << qid << endl;
+
+        cout << "Please enter time for the timer of server: " << endl;
+        cin >> message.text;
+        if(msgsnd(qid, &message, sizeof(message), IPC_NOWAIT) == -1) 
+        {
+            cerr << "Can't send message! Exiting..." << endl;
+            return -1;
+        }
+        
         cout << "Please enter the message: " << endl;
         cin >> message.text;
         if(msgsnd(qid, &message, sizeof(message), IPC_NOWAIT) == -1) 
